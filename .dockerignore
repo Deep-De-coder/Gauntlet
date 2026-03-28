@@ -1,0 +1,46 @@
+# .dockerignore
+#
+# WHY: Docker sends your entire project directory to the build daemon as a
+# "build context". Without this file, it would include your .venv (hundreds
+# of MB), your .env (your secret key!), and the SQLite DB (stale test data).
+# This file tells Docker to skip them — making builds faster and safer.
+
+# Python virtualenv — never copy this; we install fresh inside the container
+.venv/
+venv/
+env/
+
+# Secrets — NEVER bake API keys into a Docker image
+.env
+.env.*
+
+# SQLite database — each container gets a fresh DB (or a mounted volume)
+gauntlet.db
+*.db
+
+# Python cache files — not needed in the image
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Test and dev artifacts
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.egg-info/
+
+# Version control — the container doesn't need git history
+.git/
+.gitignore
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor config
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,36 @@
+# docker-compose.yml
+#
+# WHY: docker-compose lets you start the full stack with one command
+# (`docker compose up`) instead of a long `docker run` command. It also
+# mounts a named volume for the SQLite database so eval history persists
+# between container restarts (without a volume, the DB is lost every time
+# the container stops).
+#
+# Usage:
+#   ANTHROPIC_API_KEY=sk-... docker compose up
+# or create a .env file in this directory with ANTHROPIC_API_KEY=sk-...
+# and docker compose will pick it up automatically.
+
+version: "3.9"
+
+services:
+  gauntlet:
+    build: .
+    ports:
+      - "8000:8000"   # host:container — access the API at http://localhost:8000
+    environment:
+      # docker compose reads ANTHROPIC_API_KEY from your shell or a .env file
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GAUNTLET_MODEL=${GAUNTLET_MODEL:-claude-sonnet-4-20250514}
+    volumes:
+      # Persist the SQLite database between restarts
+      - gauntlet_data:/app/gauntlet.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  gauntlet_data:

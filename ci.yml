@@ -1,0 +1,44 @@
+# .github/workflows/ci.yml
+#
+# WHY: This is your GitHub Actions CI pipeline. Every time you push code or
+# open a pull request, GitHub automatically runs your tests. This proves to
+# recruiters that your project has real quality gates — not just a README claim.
+#
+# The workflow:
+# 1. Checks out your code on a fresh Ubuntu VM
+# 2. Installs Python 3.12
+# 3. Installs Gauntlet and its dev dependencies
+# 4. Runs ruff (linter) to catch style issues
+# 5. Runs pytest — tests pass because they're mocked (no API key needed!)
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"   # Cache pip downloads between runs (faster CI)
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint with ruff
+        run: ruff check gauntlet/
+
+      - name: Run tests
+        # No ANTHROPIC_API_KEY needed — all Claude calls are mocked
+        run: pytest tests/ -v --tb=short
