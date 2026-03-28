@@ -81,20 +81,21 @@ async def health():
 
 @app.post("/eval/run", response_model=EvalReport, tags=["eval"])
 async def eval_run(request: EvalRequest):
-    """Run a full Gauntlet eval against the built-in demo agent.
-
-    Pass `mode` as `"standard"`, `"adversarial"`, or `"full"`.
-    """
+    """Run a full Gauntlet eval against the built-in demo agent."""
     try:
-        get_api_key()  # Raises 503-style error if key missing
+        get_api_key()
     except EnvironmentError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
+    # Demo agent — echoes the scenario back with a canned response.
+    # Replace this with a real agent callable for production use.
+    async def demo_agent(scenario: str) -> str:
+        return f"Demo response for: {scenario[:100]}"
+
     try:
-        report = await run_eval(request)
+        report = await run_eval(request, demo_agent)
         return report
     except Exception as exc:
-        # Surface the real error in the response body so it's debuggable
         raise HTTPException(status_code=500, detail=str(exc))
 
 
