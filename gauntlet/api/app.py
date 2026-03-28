@@ -17,6 +17,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
+from fastapi.responses import JSONResponse
+from fastapi.openapi.utils import get_openapi
+
 from gauntlet.config import get_api_key
 from gauntlet.core.models import EvalRequest, EvalReport
 from gauntlet.core.runner import run_eval
@@ -55,6 +58,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+@app.get("/openapi.json", include_in_schema=False)
+async def custom_openapi():
+    return JSONResponse(
+        get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+    )
 
 # --------------------------------------------------------------------------- #
 # Routes
@@ -101,3 +114,6 @@ async def eval_get(report_id: str):
     if report is None:
         raise HTTPException(status_code=404, detail=f"Report {report_id!r} not found.")
     return report
+
+
+

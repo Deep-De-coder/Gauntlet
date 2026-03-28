@@ -23,7 +23,9 @@ load_dotenv(dotenv_path=_env_path, override=False)
 # --------------------------------------------------------------------------- #
 # Model config
 # --------------------------------------------------------------------------- #
+ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
 GAUNTLET_MODEL: str = os.getenv("GAUNTLET_MODEL", "claude-sonnet-4-20250514")
+GAUNTLET_DB_PATH: str = os.getenv("GAUNTLET_DB_PATH", "gauntlet.db")
 
 # --------------------------------------------------------------------------- #
 # API key — validated lazily so imports never raise
