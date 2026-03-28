@@ -5,70 +5,74 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Gauntlet runs your agent through a battery of **realistic and adversarial test scenarios**, judges each output, and gives you a pass rate, cost breakdown, and concrete recommendations — in one command.
+Gauntlet solves a problem every AI engineer hits in production: **how do you know your agent pipeline actually works before it breaks in front of a real user?**
+
+It generates realistic and adversarial test scenarios, runs them through your agent, judges each output, and returns a pass rate, cost breakdown, and actionable recommendations — automatically.
 
 ---
 
 ## Why Gauntlet?
 
-Every existing eval tool (DeepEval, LangSmith, OpenAI Evals) focuses on single-model metrics or is locked to a specific framework. **Gauntlet is different:**
+Existing tools (DeepEval, LangSmith) are either single-model focused or locked to a specific framework. Gauntlet is different:
 
-- ✅ **Framework-agnostic** — works with any Claude API pipeline, no LangChain required
-- ✅ **Adversarial by default** — an agent actively tries to break your pipeline (prompt injection, goal hijacking, edge cases)
-- ✅ **Plain-English goals** — you describe success in plain English; Gauntlet generates the test scenarios automatically
-- ✅ **Three interfaces** — CLI, REST API, Python SDK
-- ✅ **Zero config** — one env var and you're running
+- **Framework-agnostic** — works with any Claude or OpenAI pipeline, no LangChain required
+- **Adversarial by default** — a dedicated agent tries to break your pipeline using prompt injection, contradictory requirements, and hallucination traps
+- **Plain-English goals** — describe what your agent should do; Gauntlet generates the test scenarios automatically
+- **Three interfaces** — CLI, REST API, Python SDK
+- **Zero infrastructure** — one env var, SQLite storage, runs locally
 
 ---
 
 ## Quick start
 
 ```bash
-# 1. Clone and install
-git clone https://github.com/yourname/gauntlet
-cd gauntlet
+git clone https://github.com/yourname/gauntlet-eval
+cd gauntlet-eval
 pip install -e ".[dev]"
 
-# 2. Set your API key
 cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+# Add your ANTHROPIC_API_KEY to .env
+```
 
-# 3. Run your first eval (CLI)
+## IDE Integration (Cursor + Antigravity)
+
+Gauntlet ships as an MCP server. Once connected, paste the 
+[ready-made prompt](docs/CURSOR_PROMPT.md) into Cursor chat 
+with your agent file open — no JSON, no terminal needed.
+
+**CLI:**
+```bash
 gauntlet run \
-  --goal "Correctly categorise a support ticket and draft a polite reply" \
-  --agent-description "Two-agent pipeline: Router classifies the ticket, Writer drafts the reply" \
-  --mode adversarial \
+  --goal "Classify a support ticket and draft a reply" \
+  --agent-description "Two-agent pipeline: Router + Writer" \
+  --mode full \
   --runs 5
 ```
 
-**Or start the API server:**
+**REST API:**
 ```bash
 gauntlet serve
-# → http://localhost:8000/docs
+# Docs at http://localhost:8000/docs
 ```
 
-**Or use the Python SDK:**
+**Python SDK:**
 ```python
-import asyncio
-from gauntlet.core.models import EvalRequest, EvalMode
 from gauntlet.core.runner import run_eval
+from gauntlet.core.models import EvalRequest, EvalMode
+import asyncio
 
 async def my_agent(prompt: str) -> str:
-    # Your real agent logic here
+    # your real agent here
     return "agent response"
 
-async def main():
-    request = EvalRequest(
-        goal="Correctly handle a customer refund request",
-        agent_description="Single Claude agent with access to order lookup tool",
-        mode=EvalMode.full,
-        runs=10,
-    )
-    report = await run_eval(request, agent_fn=my_agent)
-    print(f"Pass rate: {report.pass_rate:.0%}")
-    print(f"Recommendations: {report.recommendations}")
-
-asyncio.run(main())
+request = EvalRequest(
+    goal="Handle a customer refund request",
+    agent_description="Claude agent with order lookup tool",
+    mode=EvalMode.full,
+    runs=5,
+)
+report = asyncio.run(run_eval(request, agent_fn=my_agent))
+print(f"Pass rate: {report.pass_rate:.0%}")
 ```
 
 ---
@@ -79,34 +83,50 @@ asyncio.run(main())
 Your agent
     │
     ▼
-┌────────────────────────────────────────┐
-│           Gauntlet Runner               │
-│                                         │
-│  1. ScenarioAgent  → test inputs        │
-│  2. AdversarialAgent → hostile inputs   │
-│  3. JudgeAgent     → pass/fail verdict  │
-│  4. ReportAgent    → recommendations   │
-└──────────────────┬─────────────────────┘
+┌─────────────────────────────────────┐
+│          Gauntlet Runner             │
+│                                      │
+│  1. ScenarioAgent   → test inputs    │
+│  2. AdversarialAgent→ hostile inputs │
+│  3. JudgeAgent      → pass/fail      │
+│  4. ReportAgent     → recommendations│
+└──────────────────┬──────────────────┘
                    ▼
-          gauntlet.db (SQLite)
+           gauntlet.db (SQLite)
 ```
 
-1. **ScenarioAgent** reads your plain-English goal and generates N realistic test inputs (happy paths + edge cases)
-2. **AdversarialAgent** (adversarial/full modes) generates hostile inputs — prompt injection, contradictory requirements, hallucination traps
-3. **JudgeAgent** runs each input through your agent and scores the output pass/fail with reasoning
-4. **ReportAgent** analyses all failures and returns prioritised recommendations
+| Agent | What it does |
+|---|---|
+| **ScenarioAgent** | Generates realistic test inputs from your plain-English goal |
+| **AdversarialAgent** | Generates hostile inputs — prompt injection, edge cases, hallucination traps |
+| **JudgeAgent** | Scores each agent response pass/fail with reasoning |
+| **ReportAgent** | Synthesises failures into prioritised recommendations |
 
 ---
 
-## REST API
+## Testing an external agent via the API
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/eval/run` | Run an eval, get full report |
-| GET | `/eval/{id}` | Fetch a past report |
-| GET | `/evals` | List recent runs |
+Point Gauntlet at any Claude or OpenAI model with a system prompt:
 
-Full interactive docs at `http://localhost:8000/docs`.
+```json
+{
+  "goal": "Summarise a news article in exactly three bullet points",
+  "agent_description": "News summarisation agent",
+  "agent_provider": "anthropic",
+  "agent_model": "claude-sonnet-4-20250514",
+  "agent_api_key": "sk-ant-...",
+  "agent_system_prompt": "You are a news summariser. Always respond with exactly 3 bullet points starting with •",
+  "mode": "full",
+  "runs": 5,
+  "success_criteria": [
+    "Response must contain exactly 3 bullet points",
+    "Each bullet point must start with •",
+    "Each bullet point must be under 30 words"
+  ]
+}
+```
+
+`success_criteria` is optional — if omitted, the judge evaluates against the `goal` alone.
 
 ---
 
@@ -121,32 +141,45 @@ gauntlet serve  [--port 8000]
 
 ---
 
+## REST API
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/eval/run` | Run an eval, returns full report |
+| `GET` | `/eval/{id}` | Fetch a past report |
+| `GET` | `/eval/list` | List all reports |
+| `GET` | `/health` | Liveness check |
+
+Interactive docs at `http://localhost:8000/docs`.
+
+---
+
 ## Project structure
 
 ```
 gauntlet/
-  agents/          Four specialised Claude agents
-  api/             FastAPI REST endpoints
-  core/            Models + orchestration runner
-  storage/         SQLite persistence
-  cli.py           Typer CLI
-  config.py        Env var loading
+  agents/       ScenarioAgent, AdversarialAgent, JudgeAgent, ReportAgent
+  api/          FastAPI REST endpoints
+  core/         Pydantic models + eval runner
+  storage/      SQLite persistence
+  cli.py        Typer CLI
+  config.py     Env var loading
 tests/
 docs/
-  ARCHITECTURE.md  System design
-SKILL.md           Agent role definitions (for Claude Projects)
+  ARCHITECTURE.md
 ```
 
 ---
 
 ## Contributing
 
-PRs welcome. Please read `docs/ARCHITECTURE.md` before contributing.
-
 ```bash
 pip install -e ".[dev]"
 pytest tests/
+ruff check gauntlet/
 ```
+
+PRs welcome. See `docs/ARCHITECTURE.md` for system design.
 
 ---
 
