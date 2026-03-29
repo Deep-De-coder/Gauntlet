@@ -14,15 +14,31 @@ Point it at any Claude or OpenAI agent, describe what it should do in plain Engl
 ---
 
 ## Install
-
 ```bash
 pip install gauntlet-eval
 ```
 
-Add your Anthropic API key to a `.env` file:
+Add your Anthropic API key to your MCP config (recommended):
+```json
+{
+  "mcpServers": {
+    "gauntlet": {
+      "command": "python",
+      "args": ["-m", "gauntlet.mcp_server"],
+      "env": {
+        "ANTHROPIC_API_KEY": "your-key-here"
+      }
+    }
+  }
+}
+```
+
+Or if using the CLI/API directly, add it to a `.env` file instead:
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
 ```
+
+→ Full IDE setup: [docs/MCP_SETUP.md](docs/MCP_SETUP.md)
 
 ---
 
