@@ -50,18 +50,17 @@ Once connected, type `find` in the chat and Gauntlet handles the rest.
 
 2. Add this (update the `cwd` path to your Gauntlet folder):
    ```json
-   {
-     "mcpServers": {
-       "gauntlet": {
-         "command": "python",
-         "args": ["-m", "gauntlet.mcp_server"],
-         "cwd": "C:\\path\\to\\your\\gauntlet",
-         "env": {
-           "ANTHROPIC_API_KEY": "your-key-here"
-         }
-       }
-     }
-   }
+  {
+    "mcpServers": {
+      "gauntlet": {
+        "command": "python",
+        "args": ["-m", "gauntlet.mcp_server"],
+        "env": {
+          "ANTHROPIC_API_KEY": "your-key-here"
+        }
+      }
+    }
+  }
    ```
 
 3. Restart Cursor. You should see `gauntlet` with a green dot in Settings → MCP.
