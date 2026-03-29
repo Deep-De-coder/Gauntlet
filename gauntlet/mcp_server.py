@@ -44,10 +44,10 @@ async def list_tools() -> list[Tool]:
             name="gauntlet_find_agents",
             description=(
                 "Scan the current workspace recursively for Python agent files. "
-                "Detects system prompts, model names, and providers automatically. "
-                "Returns a numbered list and tells the user exactly what to type next. "
-                "Trigger this when the user says 'find', 'find agents', 'scan', "
-                "or 'what agents do I have'."
+                "Detects system prompts, goals, model names, and providers automatically. "
+                "Returns a numbered list — user just replies with the number to run eval. "
+                "Trigger this when the user says 'find', 'find agents', 'find gauntlet', "
+                "'scan', or 'what agents do I have'."
             ),
             inputSchema={
                 "type": "object",
@@ -68,12 +68,15 @@ async def list_tools() -> list[Tool]:
             ),
             inputSchema={
                 "type": "object",
-                "required": ["goal", "agent_description", "agent_api_key", "agent_system_prompt"],
+                "required": ["goal", "agent_description", "agent_system_prompt"],
                 "properties": {
                     "goal": {"type": "string"},
                     "agent_description": {"type": "string"},
-                    "agent_api_key": {"type": "string"},
                     "agent_system_prompt": {"type": "string"},
+                    "agent_api_key": {
+                        "type": "string",
+                        "description": "API key for the agent. Falls back to ANTHROPIC_API_KEY env var if not provided.",
+                    },
                     "agent_model": {"type": "string", "default": "claude-sonnet-4-20250514"},
                     "agent_provider": {"type": "string", "enum": ["anthropic", "openai"], "default": "anthropic"},
                     "mode": {"type": "string", "enum": ["standard", "adversarial", "full"], "default": "full"},
@@ -90,11 +93,14 @@ async def list_tools() -> list[Tool]:
             ),
             inputSchema={
                 "type": "object",
-                "required": ["goal", "agent_code", "agent_api_key"],
+                "required": ["goal", "agent_code"],
                 "properties": {
                     "goal": {"type": "string"},
                     "agent_code": {"type": "string"},
-                    "agent_api_key": {"type": "string"},
+                    "agent_api_key": {
+                        "type": "string",
+                        "description": "API key for the agent. Falls back to ANTHROPIC_API_KEY env var if not provided.",
+                    },
                     "agent_model": {"type": "string", "default": "claude-sonnet-4-20250514"},
                     "agent_provider": {"type": "string", "enum": ["anthropic", "openai"], "default": "anthropic"},
                     "mode": {"type": "string", "enum": ["standard", "adversarial", "full"], "default": "full"},
@@ -131,7 +137,6 @@ async def _handle_find_agents(args: dict) -> list[TextContent]:
     found: list[dict] = []
 
     for root, dirs, files in os.walk(workspace):
-        # Skip hidden folders, venvs, caches
         dirs[:] = [
             d for d in dirs
             if not d.startswith(".")
@@ -163,33 +168,28 @@ async def _handle_find_agents(args: dict) -> list[TextContent]:
             ),
         )]
 
-    lines = [f"Found **{len(found)} agent file{'s' if len(found) > 1 else ''}** in your workspace:\n"]
+    # Build table header
+    lines = [
+        f"Gauntlet found **{len(found)} agent file{'s' if len(found) > 1 else ''}** in your workspace:\n",
+        "| # | File | Goal | Provider | Model |",
+        "|---|------|------|----------|-------|",
+    ]
 
     for i, agent in enumerate(found, 1):
-        lines += [
-            f"**{i}. {agent['relative_path']}**",
-            f"   - Provider: {agent['provider']}",
-            f"   - Model: {agent['model']}",
-            f"   - System prompt: _{agent['prompt_preview']}_",
-            "",
-        ]
+        lines.append(
+            f"| {i} | `{agent['relative_path']}` | {agent['goal_preview']} | {agent['provider']} | {agent['model']} |"
+        )
 
     lines += [
+        "",
         "---",
         "",
-        "**To run Gauntlet, reply with:**",
+        "**To run Gauntlet on one of them, just say:**",
         "```",
         "Run Gauntlet on file [NUMBER]",
-        "Goal: [what this agent is supposed to do]",
-        "API key: [your Anthropic or OpenAI key]",
         "```",
         "",
-        "Example:",
-        "```",
-        "Run Gauntlet on file 1",
-        "Goal: Classify support tickets as billing, technical, or general",
-        "API key: sk-ant-...",
-        "```",
+        "No API key needed — using the key from your MCP config.",
     ]
 
     return [TextContent(type="text", text="\n".join(lines))]
@@ -214,6 +214,9 @@ def _detect_agent(code: str, filepath: str) -> dict | None:
         else (system_prompt or "not detected")
     )
 
+    # Detect goal from module docstring, function docstrings, or comments
+    goal_preview = _extract_goal(code, filepath)
+
     provider = "openai" if re.search(r'openai|OpenAI|gpt-', code) else "anthropic"
 
     model = "claude-sonnet-4-20250514"
@@ -234,20 +237,71 @@ def _detect_agent(code: str, filepath: str) -> dict | None:
         "provider": provider,
         "model": model,
         "prompt_preview": prompt_preview,
+        "goal_preview": goal_preview,
         "code": code,
+        "system_prompt": system_prompt or "",
     }
+
+
+def _extract_goal(code: str, filepath: str) -> str:
+    """
+    Try to infer what this agent does from:
+    1. Module-level docstring
+    2. First function/class docstring
+    3. Comments at the top of the file
+    4. Filename as a last resort
+    """
+    # Module docstring
+    match = re.match(r'^\s*["\'{3}](.*?)["\'{3}]', code, re.DOTALL)
+    if match:
+        doc = match.group(1).strip().splitlines()[0].strip()
+        if len(doc) > 10:
+            return doc[:100]
+
+    # First def or class docstring
+    match = re.search(r'def \w+[^:]*:\s*["\'{3}](.*?)["\'{3}]', code, re.DOTALL)
+    if match:
+        doc = match.group(1).strip().splitlines()[0].strip()
+        if len(doc) > 10:
+            return doc[:100]
+
+    # Top-of-file comment
+    for line in code.splitlines()[:10]:
+        line = line.strip().lstrip("#").strip()
+        if len(line) > 15:
+            return line[:100]
+
+    # Fall back to filename
+    name = os.path.basename(filepath).replace("_", " ").replace(".py", "")
+    return f"Agent: {name}"
 
 
 # --------------------------------------------------------------------------- #
 # gauntlet_eval_prompt
 # --------------------------------------------------------------------------- #
 
+def _resolve_api_key(args: dict) -> str:
+    """
+    Get API key from args first, then fall back to environment.
+    This means the user never needs to type their key if it's
+    already set in the MCP config env block.
+    """
+    key = args.get("agent_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not key:
+        raise ValueError(
+            "No API key found. Add ANTHROPIC_API_KEY to your MCP config env block "
+            "or pass agent_api_key explicitly."
+        )
+    return key
+
+
 async def _handle_eval_prompt(args: dict) -> list[TextContent]:
     try:
+        api_key = _resolve_api_key(args)
         request = EvalRequest(
             goal=args["goal"],
-            agent_description=args["agent_description"],
-            agent_api_key=args["agent_api_key"],
+            agent_description=args.get("agent_description", args["goal"]),
+            agent_api_key=api_key,
             agent_system_prompt=args["agent_system_prompt"],
             agent_model=args.get("agent_model", "claude-sonnet-4-20250514"),
             agent_provider=AgentProvider(args.get("agent_provider", "anthropic")),
@@ -281,10 +335,12 @@ async def _handle_eval_file(args: dict) -> list[TextContent]:
         )]
 
     try:
+        api_key = _resolve_api_key(args)
+        goal = args.get("goal") or _extract_goal(code, "agent.py")
         request = EvalRequest(
-            goal=args["goal"],
+            goal=goal,
             agent_description=f"Agent extracted from file. Prompt: {system_prompt[:80]}...",
-            agent_api_key=args["agent_api_key"],
+            agent_api_key=api_key,
             agent_system_prompt=system_prompt,
             agent_model=args.get("agent_model", "claude-sonnet-4-20250514"),
             agent_provider=AgentProvider(args.get("agent_provider", "anthropic")),
@@ -303,8 +359,6 @@ async def _handle_eval_file(args: dict) -> list[TextContent]:
 # --------------------------------------------------------------------------- #
 
 def _extract_system_prompt(code: str) -> str | None:
-    # FIX: triple-quoted strings need explicit patterns.
-    # The previous [{3}] pattern was invalid regex and silently failed.
     import re as _re
     # Triple-quoted — must come before single/double quoted patterns
     for var in ["system_prompt", "SYSTEM_PROMPT", "system"]:
