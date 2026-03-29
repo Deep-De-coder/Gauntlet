@@ -54,7 +54,7 @@ No cloning required. The `gauntlet` command and MCP server are available immedia
 With any project open, type in the chat:
 
 ```
-find
+find gauntlent
 ```
 
 Gauntlet scans your workspace recursively, detects agent files, and returns a numbered list:
