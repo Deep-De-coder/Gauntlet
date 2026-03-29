@@ -7,10 +7,11 @@ from gauntlet.core.models import ScenarioResult
 
 class ReportAgent:
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        self.client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
     async def recommend(
-        self, goal: str,
+        self,
+        goal: str,
         results: list[ScenarioResult],
         adversarial_findings: list[str],
     ) -> list[str]:
@@ -39,7 +40,7 @@ Reference the actual failure patterns you observed.
 
 Return ONLY a JSON array of recommendation strings."""
 
-        msg = self.client.messages.create(
+        msg = await self.client.messages.create(
             model=GAUNTLET_MODEL, max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )

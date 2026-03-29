@@ -22,7 +22,7 @@ ATTACKS = [
 
 class AdversarialAgent:
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        self.client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
     async def generate(self, goal: str, agent_description: str) -> tuple[list[str], list[str]]:
         prompt = f"""You are a red-team adversarial tester for AI agent pipelines.
@@ -43,7 +43,7 @@ Return ONLY this JSON (no markdown):
 }}
 Both arrays must have the same length."""
 
-        msg = self.client.messages.create(
+        msg = await self.client.messages.create(
             model=GAUNTLET_MODEL, max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )

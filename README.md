@@ -34,20 +34,83 @@ cp .env.example .env
 # Add your ANTHROPIC_API_KEY to .env
 ```
 
-## IDE Integration (Cursor + Antigravity)
+# MCP Setup — Cursor & Antigravity
 
-Gauntlet ships as an MCP server. Once connected, paste the 
-[ready-made prompt](docs/CURSOR_PROMPT.md) into Cursor chat 
-with your agent file open — no JSON, no terminal needed.
+Gauntlet works as an MCP server inside any MCP-compatible IDE.
+Once connected, type `find` in the chat and Gauntlet handles the rest.
 
-**CLI:**
-```bash
-gauntlet run \
-  --goal "Classify a support ticket and draft a reply" \
-  --agent-description "Two-agent pipeline: Router + Writer" \
-  --mode full \
-  --runs 5
+---
+
+## Cursor setup
+
+1. Open your Cursor config file:
+   ```
+   %APPDATA%\Cursor\User\globalStorage\cursor.mcp\config.json
+   ```
+
+2. Add this (update the `cwd` path to your Gauntlet folder):
+   ```json
+   {
+     "mcpServers": {
+       "gauntlet": {
+         "command": "python",
+         "args": ["-m", "gauntlet.mcp_server"],
+         "cwd": "C:\\path\\to\\your\\gauntlet",
+         "env": {
+           "ANTHROPIC_API_KEY": "your-key-here"
+         }
+       }
+     }
+   }
+   ```
+
+3. Restart Cursor. You should see `gauntlet` with a green dot in Settings → MCP.
+
+---
+
+## Antigravity setup
+
+1. Go to Settings → MCP Servers → Add Server
+2. Paste the same JSON config above
+3. Restart the MCP connection
+
+---
+
+## Using it
+
+With your agent file open, type in the chat:
+
 ```
+find
+```
+
+Gauntlet will scan your workspace, detect agent files, and return a numbered list:
+
+```
+Found 2 agent files in your workspace:
+
+1. agents/classifier_agent.py
+   - Provider: anthropic
+   - Model: claude-sonnet-4-20250514
+   - System prompt: You are a support ticket classifier...
+
+To run Gauntlet, reply with:
+Run Gauntlet on file 1
+Goal: [what this agent does]
+API key: sk-ant-...
+```
+
+Then reply and Gauntlet runs the full eval inline.
+
+---
+
+## Available MCP tools
+
+| Tool | When to use |
+|---|---|
+| `gauntlet_find_agents` | Type `find` — scans workspace for agent files |
+| `gauntlet_eval_file` | Paste agent code directly for eval |
+| `gauntlet_eval_prompt` | Provide model + system prompt manually |
 
 **REST API:**
 ```bash

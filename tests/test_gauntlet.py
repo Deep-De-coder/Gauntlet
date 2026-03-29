@@ -1,4 +1,4 @@
-# tests/test_gauntlet.py
+# tests/test_gauntlet.py — updated for production models
 #
 # WHY: These tests cover the four most important units without ever calling
 # the real Anthropic API. We use `unittest.mock.patch` to swap out the

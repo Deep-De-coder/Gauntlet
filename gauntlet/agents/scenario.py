@@ -6,7 +6,10 @@ from gauntlet.config import ANTHROPIC_API_KEY, GAUNTLET_MODEL
 
 class ScenarioAgent:
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        # WHY AsyncAnthropic: all agents run inside async functions.
+        # Using the sync client blocks the entire event loop, freezing
+        # the server while waiting for Claude. AsyncAnthropic fixes this.
+        self.client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
     async def generate(self, goal: str, agent_description: str, count: int = 5) -> list[str]:
         prompt = f"""You are a test scenario generator for AI agent pipelines.
@@ -23,7 +26,7 @@ Generate exactly {count} diverse test scenario inputs. Cover:
 Return ONLY a JSON array of {count} strings. No explanation, no markdown fences.
 Example: ["scenario 1", "scenario 2"]"""
 
-        msg = self.client.messages.create(
+        msg = await self.client.messages.create(
             model=GAUNTLET_MODEL, max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )

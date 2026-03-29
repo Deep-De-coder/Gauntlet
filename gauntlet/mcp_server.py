@@ -3,9 +3,10 @@ gauntlet/mcp_server.py
 
 Gauntlet MCP Server — exposes Gauntlet as a tool inside Cursor and Antigravity.
 
-Two tools:
-  1. gauntlet_eval_prompt  — evaluate any model+system prompt combo
-  2. gauntlet_eval_file    — paste agent code; Gauntlet extracts the prompt and evaluates it
+Three tools:
+  1. gauntlet_find_agents  — scan workspace, find agent files, show numbered list
+  2. gauntlet_eval_prompt  — evaluate any model+system prompt combo
+  3. gauntlet_eval_file    — paste agent code; Gauntlet extracts prompt and evaluates
 
 Usage:
   python -m gauntlet.mcp_server
@@ -13,6 +14,7 @@ Usage:
 
 import asyncio
 import json
+import os
 import re
 
 import mcp.server.stdio
@@ -28,133 +30,76 @@ from mcp.types import (
 from gauntlet.core.models import EvalRequest, EvalMode, AgentProvider
 from gauntlet.core.runner import run_eval
 
-# --------------------------------------------------------------------------- #
-# Server setup
-# --------------------------------------------------------------------------- #
-
 server = Server("gauntlet")
 
 
 # --------------------------------------------------------------------------- #
-# Tool definitions — these are what the IDE sees and can call
+# Tool definitions
 # --------------------------------------------------------------------------- #
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
     return [
         Tool(
+            name="gauntlet_find_agents",
+            description=(
+                "Scan the current workspace recursively for Python agent files. "
+                "Detects system prompts, model names, and providers automatically. "
+                "Returns a numbered list and tells the user exactly what to type next. "
+                "Trigger this when the user says 'find', 'find agents', 'scan', "
+                "or 'what agents do I have'."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "workspace_path": {
+                        "type": "string",
+                        "description": "Root path to scan. Defaults to current directory.",
+                        "default": ".",
+                    },
+                },
+            },
+        ),
+        Tool(
             name="gauntlet_eval_prompt",
             description=(
-                "Run an adversarial eval on any LLM agent defined by a model name and system prompt. "
-                "Use this when you want to test how reliable an agent is before shipping it. "
-                "Returns pass rate, per-scenario verdicts, and actionable recommendations."
+                "Run an adversarial eval on any LLM agent defined by a model name "
+                "and system prompt. Returns pass rate, per-scenario verdicts, and recommendations."
             ),
             inputSchema={
                 "type": "object",
                 "required": ["goal", "agent_description", "agent_api_key", "agent_system_prompt"],
                 "properties": {
-                    "goal": {
-                        "type": "string",
-                        "description": "What the agent is supposed to do. Be specific.",
-                        "example": "Classify a support ticket as billing, technical, or general.",
-                    },
-                    "agent_description": {
-                        "type": "string",
-                        "description": "One sentence describing the agent pipeline.",
-                        "example": "Single Claude call with a classification system prompt.",
-                    },
-                    "agent_api_key": {
-                        "type": "string",
-                        "description": "API key for the agent under test (Anthropic or OpenAI).",
-                    },
-                    "agent_system_prompt": {
-                        "type": "string",
-                        "description": "The system prompt that defines the agent's behaviour.",
-                        "example": "You are a support ticket classifier. Reply with only one word: billing, technical, or general.",
-                    },
-                    "agent_model": {
-                        "type": "string",
-                        "description": "Model name. Default: claude-sonnet-4-20250514",
-                        "default": "claude-sonnet-4-20250514",
-                    },
-                    "agent_provider": {
-                        "type": "string",
-                        "enum": ["anthropic", "openai"],
-                        "description": "LLM provider. Default: anthropic",
-                        "default": "anthropic",
-                    },
-                    "mode": {
-                        "type": "string",
-                        "enum": ["standard", "adversarial", "full"],
-                        "description": "Eval mode. 'full' runs both realistic and adversarial scenarios.",
-                        "default": "full",
-                    },
-                    "runs": {
-                        "type": "integer",
-                        "description": "Number of scenarios to generate. Default: 3",
-                        "default": 3,
-                        "minimum": 1,
-                        "maximum": 20,
-                    },
-                    "success_criteria": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional custom pass/fail rules for the judge.",
-                        "example": ["Response must be exactly one word", "Response must be one of: billing, technical, general"],
-                    },
+                    "goal": {"type": "string"},
+                    "agent_description": {"type": "string"},
+                    "agent_api_key": {"type": "string"},
+                    "agent_system_prompt": {"type": "string"},
+                    "agent_model": {"type": "string", "default": "claude-sonnet-4-20250514"},
+                    "agent_provider": {"type": "string", "enum": ["anthropic", "openai"], "default": "anthropic"},
+                    "mode": {"type": "string", "enum": ["standard", "adversarial", "full"], "default": "full"},
+                    "runs": {"type": "integer", "default": 3, "minimum": 1, "maximum": 20},
+                    "success_criteria": {"type": "array", "items": {"type": "string"}},
                 },
             },
         ),
         Tool(
             name="gauntlet_eval_file",
             description=(
-                "Paste Python agent code and Gauntlet will extract the system prompt, "
-                "then run an adversarial eval automatically. "
-                "Use this when you have an agent.py open in your editor and want to test it instantly."
+                "Paste Python agent code and Gauntlet will extract the system prompt "
+                "then run an adversarial eval automatically."
             ),
             inputSchema={
                 "type": "object",
                 "required": ["goal", "agent_code", "agent_api_key"],
                 "properties": {
-                    "goal": {
-                        "type": "string",
-                        "description": "What the agent is supposed to do.",
-                        "example": "Summarise a news article in three bullet points.",
-                    },
-                    "agent_code": {
-                        "type": "string",
-                        "description": "The full Python source code of the agent file.",
-                    },
-                    "agent_api_key": {
-                        "type": "string",
-                        "description": "API key for the agent under test.",
-                    },
-                    "agent_model": {
-                        "type": "string",
-                        "description": "Model name used by the agent. Default: claude-sonnet-4-20250514",
-                        "default": "claude-sonnet-4-20250514",
-                    },
-                    "agent_provider": {
-                        "type": "string",
-                        "enum": ["anthropic", "openai"],
-                        "default": "anthropic",
-                    },
-                    "mode": {
-                        "type": "string",
-                        "enum": ["standard", "adversarial", "full"],
-                        "default": "full",
-                    },
-                    "runs": {
-                        "type": "integer",
-                        "default": 3,
-                        "minimum": 1,
-                        "maximum": 20,
-                    },
-                    "success_criteria": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional custom pass/fail rules.",
-                    },
+                    "goal": {"type": "string"},
+                    "agent_code": {"type": "string"},
+                    "agent_api_key": {"type": "string"},
+                    "agent_model": {"type": "string", "default": "claude-sonnet-4-20250514"},
+                    "agent_provider": {"type": "string", "enum": ["anthropic", "openai"], "default": "anthropic"},
+                    "mode": {"type": "string", "enum": ["standard", "adversarial", "full"], "default": "full"},
+                    "runs": {"type": "integer", "default": 3, "minimum": 1, "maximum": 20},
+                    "success_criteria": {"type": "array", "items": {"type": "string"}},
                 },
             },
         ),
@@ -167,19 +112,137 @@ async def list_tools() -> list[Tool]:
 
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-
-    if name == "gauntlet_eval_prompt":
+    if name == "gauntlet_find_agents":
+        return await _handle_find_agents(arguments)
+    elif name == "gauntlet_eval_prompt":
         return await _handle_eval_prompt(arguments)
-
     elif name == "gauntlet_eval_file":
         return await _handle_eval_file(arguments)
-
     else:
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
 
+# --------------------------------------------------------------------------- #
+# gauntlet_find_agents
+# --------------------------------------------------------------------------- #
+
+async def _handle_find_agents(args: dict) -> list[TextContent]:
+    workspace = args.get("workspace_path", ".")
+    found: list[dict] = []
+
+    for root, dirs, files in os.walk(workspace):
+        # Skip hidden folders, venvs, caches
+        dirs[:] = [
+            d for d in dirs
+            if not d.startswith(".")
+            and d not in {"__pycache__", ".venv", "venv", "env", "node_modules", "dist", "build"}
+        ]
+        for filename in files:
+            if not filename.endswith(".py"):
+                continue
+            filepath = os.path.join(root, filename)
+            try:
+                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                    code = f.read()
+            except Exception:
+                continue
+            agent_info = _detect_agent(code, filepath)
+            if agent_info:
+                found.append(agent_info)
+
+    if not found:
+        return [TextContent(
+            type="text",
+            text=(
+                "No agent files found in this workspace.\n\n"
+                "Gauntlet looks for Python files that contain:\n"
+                "- A `system_prompt` or `SYSTEM_PROMPT` variable\n"
+                "- A `system=` argument in an Anthropic or OpenAI API call\n"
+                "- A dict with `{'role': 'system', 'content': '...'}`\n\n"
+                "Make sure your agent file is in the current workspace."
+            ),
+        )]
+
+    lines = [f"Found **{len(found)} agent file{'s' if len(found) > 1 else ''}** in your workspace:\n"]
+
+    for i, agent in enumerate(found, 1):
+        lines += [
+            f"**{i}. {agent['relative_path']}**",
+            f"   - Provider: {agent['provider']}",
+            f"   - Model: {agent['model']}",
+            f"   - System prompt: _{agent['prompt_preview']}_",
+            "",
+        ]
+
+    lines += [
+        "---",
+        "",
+        "**To run Gauntlet, reply with:**",
+        "```",
+        "Run Gauntlet on file [NUMBER]",
+        "Goal: [what this agent is supposed to do]",
+        "API key: [your Anthropic or OpenAI key]",
+        "```",
+        "",
+        "Example:",
+        "```",
+        "Run Gauntlet on file 1",
+        "Goal: Classify support tickets as billing, technical, or general",
+        "API key: sk-ant-...",
+        "```",
+    ]
+
+    return [TextContent(type="text", text="\n".join(lines))]
+
+
+def _detect_agent(code: str, filepath: str) -> dict | None:
+    agent_signals = [
+        r'system_prompt\s*=',
+        r'SYSTEM_PROMPT\s*=',
+        r'system\s*=\s*["\']',
+        r'"role"\s*:\s*"system"',
+        r"'role'\s*:\s*'system'",
+        r'messages\.create\(',
+        r'chat\.completions\.create\(',
+    ]
+    if not any(re.search(sig, code, re.IGNORECASE) for sig in agent_signals):
+        return None
+
+    system_prompt = _extract_system_prompt(code)
+    prompt_preview = (
+        (system_prompt[:80] + "...") if system_prompt and len(system_prompt) > 80
+        else (system_prompt or "not detected")
+    )
+
+    provider = "openai" if re.search(r'openai|OpenAI|gpt-', code) else "anthropic"
+
+    model = "claude-sonnet-4-20250514"
+    for pattern in [r'claude-[a-z0-9\-\.]+', r'gpt-[a-z0-9\-\.]+', r'o[1-9]-[a-z0-9\-]+']:
+        match = re.search(pattern, code)
+        if match:
+            model = match.group(0)
+            break
+
+    try:
+        relative_path = os.path.relpath(filepath)
+    except ValueError:
+        relative_path = filepath
+
+    return {
+        "filepath": filepath,
+        "relative_path": relative_path,
+        "provider": provider,
+        "model": model,
+        "prompt_preview": prompt_preview,
+        "code": code,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# gauntlet_eval_prompt
+# --------------------------------------------------------------------------- #
+
 async def _handle_eval_prompt(args: dict) -> list[TextContent]:
-    """Handle gauntlet_eval_prompt tool call."""
     try:
         request = EvalRequest(
             goal=args["goal"],
@@ -194,19 +257,16 @@ async def _handle_eval_prompt(args: dict) -> list[TextContent]:
         )
         report = await run_eval(request)
         return [TextContent(type="text", text=_format_report(report))]
-
     except Exception as exc:
         return [TextContent(type="text", text=f"Gauntlet error: {exc}")]
 
 
-async def _handle_eval_file(args: dict) -> list[TextContent]:
-    """
-    Handle gauntlet_eval_file tool call.
-    Extracts the system prompt from the agent code automatically.
-    """
-    code = args["agent_code"]
+# --------------------------------------------------------------------------- #
+# gauntlet_eval_file
+# --------------------------------------------------------------------------- #
 
-    # Extract system prompt from common patterns in agent code
+async def _handle_eval_file(args: dict) -> list[TextContent]:
+    code = args["agent_code"]
     system_prompt = _extract_system_prompt(code)
 
     if not system_prompt:
@@ -214,8 +274,8 @@ async def _handle_eval_file(args: dict) -> list[TextContent]:
             type="text",
             text=(
                 "Gauntlet could not find a system prompt in the provided code.\n"
-                "Make sure your code contains a string assigned to a variable named "
-                "`system_prompt`, `SYSTEM_PROMPT`, or passed as `system=` in an API call.\n\n"
+                "Make sure your code contains a string assigned to `system_prompt`, "
+                "`SYSTEM_PROMPT`, or passed as `system=` in an API call.\n\n"
                 "Alternatively use `gauntlet_eval_prompt` and paste your system prompt directly."
             ),
         )]
@@ -223,7 +283,7 @@ async def _handle_eval_file(args: dict) -> list[TextContent]:
     try:
         request = EvalRequest(
             goal=args["goal"],
-            agent_description=f"Agent extracted from code file. System prompt: {system_prompt[:100]}...",
+            agent_description=f"Agent extracted from file. Prompt: {system_prompt[:80]}...",
             agent_api_key=args["agent_api_key"],
             agent_system_prompt=system_prompt,
             agent_model=args.get("agent_model", "claude-sonnet-4-20250514"),
@@ -234,43 +294,46 @@ async def _handle_eval_file(args: dict) -> list[TextContent]:
         )
         report = await run_eval(request)
         return [TextContent(type="text", text=_format_report(report))]
-
     except Exception as exc:
         return [TextContent(type="text", text=f"Gauntlet error: {exc}")]
 
 
 # --------------------------------------------------------------------------- #
-# Helpers
+# Shared helpers
 # --------------------------------------------------------------------------- #
 
 def _extract_system_prompt(code: str) -> str | None:
-    """
-    Try to extract a system prompt from Python agent code.
-    Handles the most common patterns developers use.
-    """
-    patterns = [
-        # system_prompt = "..." or system_prompt = """..."""
-        r'system_prompt\s*=\s*["\'{3}](.*?)["\'{3}]',
-        r'SYSTEM_PROMPT\s*=\s*["\'{3}](.*?)["\'{3}]',
-        # system="..." in API calls
-        r'system\s*=\s*["\'{3}](.*?)["\'{3}]',
-        # {"role": "system", "content": "..."}
+    # FIX: triple-quoted strings need explicit patterns.
+    # The previous [{3}] pattern was invalid regex and silently failed.
+    import re as _re
+    # Triple-quoted — must come before single/double quoted patterns
+    for var in ["system_prompt", "SYSTEM_PROMPT", "system"]:
+        for q in ['"""', "'''"]:
+            eq = _re.escape(q)
+            pat = rf'{var}\s*=\s*{eq}(.*?){eq}'
+            m = _re.search(pat, code, _re.DOTALL | _re.IGNORECASE)
+            if m and len(m.group(1).strip()) > 10:
+                return m.group(1).strip()
+    # Single/double quoted
+    for var in ["system_prompt", "SYSTEM_PROMPT", "system"]:
+        for q in ['"', "'"]:
+            eq = _re.escape(q)
+            pat = rf'{var}\s*=\s*{eq}(.*?){eq}'
+            m = _re.search(pat, code, _re.DOTALL | _re.IGNORECASE)
+            if m and len(m.group(1).strip()) > 10:
+                return m.group(1).strip()
+    # Dict-style messages array
+    for pat in [
         r'"role"\s*:\s*"system"\s*,\s*"content"\s*:\s*"(.*?)"',
         r"'role'\s*:\s*'system'\s*,\s*'content'\s*:\s*'(.*?)'",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, code, re.DOTALL | re.IGNORECASE)
-        if match:
-            prompt = match.group(1).strip()
-            if len(prompt) > 10:  # ignore empty or trivial matches
-                return prompt
-
+    ]:
+        m = _re.search(pat, code, _re.DOTALL | _re.IGNORECASE)
+        if m and len(m.group(1).strip()) > 10:
+            return m.group(1).strip()
     return None
 
 
 def _format_report(report) -> str:
-    """Format the EvalReport into a clean, readable summary for the IDE."""
     lines = [
         f"## Gauntlet Eval Report — {report.eval_id}",
         f"",
@@ -278,13 +341,11 @@ def _format_report(report) -> str:
         f"**Mode:** {report.mode}",
         f"**Pass rate:** {report.pass_rate:.0%} ({report.passed}/{report.total_runs})",
         f"**Avg cost:** ${report.avg_cost_usd:.4f}",
-        f"**Avg latency:** {report.avg_latency_ms:.0f}ms",
         f"",
         f"---",
         f"",
         f"### Scenario Results",
     ]
-
     for r in report.scenarios:
         status = "✅ PASS" if r.passed else "❌ FAIL"
         lines += [
@@ -296,22 +357,12 @@ def _format_report(report) -> str:
         ]
 
     if report.adversarial_findings:
-        lines += [
-            f"",
-            f"---",
-            f"",
-            f"### Adversarial Findings",
-        ]
+        lines += ["", "---", "", "### Adversarial Findings"]
         for finding in report.adversarial_findings:
             lines.append(f"- {finding}")
 
     if report.recommendations:
-        lines += [
-            f"",
-            f"---",
-            f"",
-            f"### Recommendations",
-        ]
+        lines += ["", "---", "", "### Recommendations"]
         for i, rec in enumerate(report.recommendations, 1):
             lines.append(f"{i}. {rec}")
 

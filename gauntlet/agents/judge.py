@@ -8,14 +8,30 @@ class JudgeAgent:
     def __init__(self):
         self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-    async def evaluate(self, goal: str, scenario_input: str, agent_output: str) -> dict:
+    async def evaluate(
+        self,
+        goal: str,
+        scenario_input: str,
+        agent_output: str,
+        success_criteria: str | None = None,
+    ) -> dict:
+        # Build the criteria section of the prompt.
+        # If the user supplied custom criteria, use those instead of just the goal.
+        if success_criteria:
+            criteria_section = f"""Custom pass/fail criteria (ALL must be met to pass):
+{success_criteria}"""
+        else:
+            criteria_section = f"Pass criteria: The agent must have achieved this goal: {goal}"
+
         prompt = f"""You are an impartial judge evaluating an AI agent's output.
 
 Goal: {goal}
 Input the agent received: {scenario_input}
 Agent's output: {agent_output}
 
-Did the agent achieve its goal? Be strict but fair.
+{criteria_section}
+
+Be strict but fair. If custom criteria are provided, every single one must be met to pass.
 
 Return ONLY this JSON (no markdown):
 {{"passed": true or false, "reasoning": "one sentence explanation"}}"""
