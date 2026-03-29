@@ -28,7 +28,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ## Three ways to use it
 
-### 1. IDE — least manual work
+### 1. IDE (MCP Servers) — least manual work
 Connect Gauntlet as an MCP server in Cursor or Antigravity, then type `find` in the chat. Gauntlet scans your workspace, detects agent files, and walks you through the eval.
 
 → [docs/MCP_SETUP.md](docs/MCP_SETUP.md)
