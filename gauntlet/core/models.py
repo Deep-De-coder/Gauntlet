@@ -50,31 +50,21 @@ class EvalRequest(BaseModel):
     # ------------------------------------------------------------------ #
     agent_provider: AgentProvider = Field(
         default=AgentProvider.anthropic,
-        description="LLM provider for the agent under test. `anthropic` or `openai`.",
+        description="LLM provider for the agent under test.",
     )
     agent_model: str = Field(
         default="claude-sonnet-4-20250514",
-        description=(
-            "Model name for the agent under test. "
-            "Examples: `claude-sonnet-4-20250514`, `gpt-4o`, `gpt-4o-mini`."
-        ),
+        description="Model name for the agent under test.",
         example="claude-sonnet-4-20250514",
     )
     agent_api_key: str = Field(
         ...,
-        description=(
-            "API key for the agent under test. "
-            "This key is used ONLY to call the agent — never stored or logged."
-        ),
+        description="API key for the agent under test. Never stored or logged.",
         example="sk-ant-...",
     )
     agent_system_prompt: str = Field(
         default="You are a helpful assistant.",
-        description=(
-            "System prompt for the agent under test. "
-            "This is how you configure what your agent does."
-        ),
-        example="You are a news summariser. Always respond with exactly 3 bullet points starting with '•'.",
+        description="System prompt that defines the agent behaviour.",
     )
 
     # ------------------------------------------------------------------ #
@@ -84,16 +74,48 @@ class EvalRequest(BaseModel):
         default=[],
         description=(
             "Optional list of custom rules the JudgeAgent uses to decide pass/fail. "
-            "If empty, the judge uses the `goal` alone. "
-            "Be specific — vague criteria lead to inconsistent verdicts."
+            "If empty, the judge uses the goal alone."
         ),
         example=[
             "Response must contain exactly 3 bullet points",
             "Each bullet point must be under 30 words",
-            "Response must not include phrases like 'I cannot' or 'As an AI'",
         ],
     )
 
+
+# --------------------------------------------------------------------------- #
+# Tracing models — used when evaluating multi-agent workflows
+# --------------------------------------------------------------------------- #
+
+class AgentStepResult(BaseModel):
+    """
+    Judge verdict for a single step inside a multi-agent workflow.
+    One of these is created per sub-agent per scenario.
+    """
+    agent_name: str   = Field(description="Name of the sub-agent e.g. Router, Writer")
+    input: str        = Field(description="What this agent received")
+    output: str       = Field(description="What this agent returned")
+    passed: bool      = Field(description="Whether this step output was acceptable")
+    reasoning: str    = Field(description="Judge reasoning for the verdict")
+    latency_ms: int   = Field(default=0)
+    error: str | None = Field(default=None, description="Error if the step crashed")
+
+
+class AgentPassRate(BaseModel):
+    """Per-agent aggregated pass rate across all scenarios."""
+    agent_name: str
+    passed: int
+    total: int
+    pass_rate: float
+    common_failure: str = Field(
+        default="",
+        description="Most common failure pattern for this agent",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Core result models
+# --------------------------------------------------------------------------- #
 
 class ScenarioResult(BaseModel):
     scenario_id: str
@@ -104,6 +126,17 @@ class ScenarioResult(BaseModel):
     judge_reasoning: str
     cost_usd: float
     latency_ms: int
+
+    # Multi-agent fields — empty for single-agent evals
+    is_multi_agent: bool = Field(default=False)
+    step_results: list[AgentStepResult] = Field(
+        default=[],
+        description="Per-step verdicts when tracing a multi-agent workflow",
+    )
+    first_failure_agent: str | None = Field(
+        default=None,
+        description="First agent that produced a bad output in this scenario",
+    )
 
 
 class EvalReport(BaseModel):
@@ -120,3 +153,14 @@ class EvalReport(BaseModel):
     adversarial_findings: list[str] = []
     recommendations: list[str] = []
     created_at: float = Field(default_factory=time.time)
+
+    # Multi-agent fields — empty for single-agent evals
+    is_multi_agent: bool = Field(default=False)
+    agent_pass_rates: list[AgentPassRate] = Field(
+        default=[],
+        description="Per-agent pass rates — shows which agent is the bottleneck",
+    )
+    bottleneck_agent: str | None = Field(
+        default=None,
+        description="Agent with the lowest pass rate across all scenarios",
+    )

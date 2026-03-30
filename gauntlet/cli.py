@@ -72,14 +72,21 @@ def run(
 
 
 @app.command()
-def show(eval_id: str):
-    """Print a full eval report as JSON."""
+def show(
+    eval_id: str,
+    json: bool = typer.Option(False, "--json", help="Output raw JSON instead of formatted report"),
+):
+    """Print a full eval report."""
     from gauntlet.storage.db import get_report
+    from gauntlet.reporting import format_report
     report = asyncio.run(get_report(eval_id))
     if not report:
         rprint(f"[red]Not found: {eval_id}[/red]")
         raise typer.Exit(1)
-    console.print_json(report.model_dump_json(indent=2))
+    if json:
+        console.print_json(report.model_dump_json(indent=2))
+    else:
+        console.print(format_report(report, use_markdown=False))
 
 
 @app.command("list")

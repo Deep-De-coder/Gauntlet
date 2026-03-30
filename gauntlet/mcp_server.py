@@ -29,6 +29,7 @@ from mcp.types import (
 
 from gauntlet.core.models import EvalRequest, EvalMode, AgentProvider
 from gauntlet.core.runner import run_eval
+from gauntlet.reporting import format_report
 
 server = Server("gauntlet")
 
@@ -310,7 +311,7 @@ async def _handle_eval_prompt(args: dict) -> list[TextContent]:
             success_criteria=args.get("success_criteria", []),
         )
         report = await run_eval(request)
-        return [TextContent(type="text", text=_format_report(report))]
+        return [TextContent(type="text", text=format_report(report, use_markdown=True))]
     except Exception as exc:
         return [TextContent(type="text", text=f"Gauntlet error: {exc}")]
 
@@ -349,7 +350,7 @@ async def _handle_eval_file(args: dict) -> list[TextContent]:
             success_criteria=args.get("success_criteria", []),
         )
         report = await run_eval(request)
-        return [TextContent(type="text", text=_format_report(report))]
+        return [TextContent(type="text", text=format_report(report, use_markdown=True))]
     except Exception as exc:
         return [TextContent(type="text", text=f"Gauntlet error: {exc}")]
 
