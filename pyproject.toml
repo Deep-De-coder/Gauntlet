@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gauntlet-eval"
-version = "0.1.2"
-description = "Adversarial multi-agent eval harness for Claude API pipelines"
+version = "0.1.3"
+description = "Adversarial multi-agent eval harness for Claude API/OpenAI or any LLM agent pipelines"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["ai", "agents", "evaluation", "llm", "claude", "adversarial"]
+keywords = ["ai", "agents", "evaluation", "llm", "claude", "openai", "adversarial", "evals", "multi-agent"]
 dependencies = [
     "anthropic>=0.25.0",
     "fastapi>=0.111.0",

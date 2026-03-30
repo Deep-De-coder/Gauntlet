@@ -1,7 +1,7 @@
 """Shared Pydantic models used across API, CLI, and agents."""
 from __future__ import annotations
 from enum import Enum
-from typing import Any, Literal
+from typing import Any
 from pydantic import BaseModel, Field
 import time
 
@@ -99,6 +99,7 @@ class AgentStepResult(BaseModel):
     reasoning: str    = Field(description="Judge reasoning for the verdict")
     latency_ms: int   = Field(default=0)
     error: str | None = Field(default=None, description="Error if the step crashed")
+    skipped: bool     = Field(default=False, description="True if upstream failure prevented this agent from running")
 
 
 class AgentPassRate(BaseModel):

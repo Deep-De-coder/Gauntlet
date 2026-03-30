@@ -6,7 +6,9 @@ from gauntlet.config import ANTHROPIC_API_KEY, GAUNTLET_MODEL
 
 class JudgeAgent:
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        # AsyncAnthropic — all agents run inside async functions.
+        # Sync client blocks the event loop; AsyncAnthropic fixes this.
+        self.client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
     async def evaluate(
         self,
@@ -15,8 +17,6 @@ class JudgeAgent:
         agent_output: str,
         success_criteria: str | None = None,
     ) -> dict:
-        # Build the criteria section of the prompt.
-        # If the user supplied custom criteria, use those instead of just the goal.
         if success_criteria:
             criteria_section = f"""Custom pass/fail criteria (ALL must be met to pass):
 {success_criteria}"""
@@ -36,7 +36,7 @@ Be strict but fair. If custom criteria are provided, every single one must be me
 Return ONLY this JSON (no markdown):
 {{"passed": true or false, "reasoning": "one sentence explanation"}}"""
 
-        msg = self.client.messages.create(
+        msg = await self.client.messages.create(
             model=GAUNTLET_MODEL, max_tokens=256,
             messages=[{"role": "user", "content": prompt}],
         )

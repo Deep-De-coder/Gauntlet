@@ -1,7 +1,7 @@
 # MCP Setup — Cursor & Antigravity
 
 Gauntlet works as an MCP server inside any MCP-compatible IDE.
-Once connected, type `find` in the chat and Gauntlet handles the rest.
+Once connected, type `find gauntlet` in the chat and Gauntlet handles the rest.
 
 ---
 
@@ -57,28 +57,22 @@ With any project open, type in the chat:
 find gauntlet
 ```
 
-Gauntlet scans your workspace recursively, detects agent files, and returns a numbered list:
+Gauntlet scans your workspace recursively, detects agent files, and returns a table with the goal auto-detected from each file:
 
 ```
-Found 2 agent files in your workspace:
+Gauntlet found 3 agent files in your workspace:
 
-1. agents/classifier_agent.py
-   - Provider: anthropic
-   - Model: claude-sonnet-4-20250514
-   - System prompt: You are a support ticket classifier...
+| # | File                        | Goal                              | Provider   | Model                    |
+|---|-----------------------------|-----------------------------------|------------|--------------------------|
+| 1 | agents/classifier_agent.py  | Classify support tickets          | anthropic  | claude-sonnet-4-20250514 |
+| 2 | agents/summary_agent.py     | Summarise news articles           | openai     | gpt-4o                   |
+| 3 | tools/llm.py                | Route prompts to correct provider | anthropic  | claude-sonnet-4-20250514 |
 
-2. agents/summary_agent.py
-   - Provider: openai
-   - Model: gpt-4o
-   - System prompt: You are a news summariser...
-
-To run Gauntlet, reply with:
-Run Gauntlet on file 1
-Goal: [what this agent does]
-API key: sk-ant-...
+To run Gauntlet on one of them, just say:
+Run Gauntlet on file [NUMBER]
 ```
 
-Reply and Gauntlet runs the full eval inline — no terminal, no JSON, no manual work.
+Reply with the number — no API key needed, Gauntlet uses the key from your MCP config automatically.
 
 ---
 
@@ -86,7 +80,7 @@ Reply and Gauntlet runs the full eval inline — no terminal, no JSON, no manual
 
 | Tool | Trigger | What it does |
 |---|---|---|
-| `gauntlet_find_agents` | Type `find` | Scans workspace for agent files automatically |
+| `gauntlet_find_agents` | `find gauntlet` | Scans workspace, detects agents, shows goal + model |
 | `gauntlet_eval_file` | Paste agent code | Extracts system prompt and runs eval |
 | `gauntlet_eval_prompt` | Provide model + prompt manually | Runs eval without needing a file |
 
@@ -98,7 +92,16 @@ Reply and Gauntlet runs the full eval inline — no terminal, no JSON, no manual
 Make sure `gauntlet-eval` is installed in the same Python that Cursor uses. Run `where python` in CMD to check.
 
 **API key error on eval**
-The `ANTHROPIC_API_KEY` in the MCP config is Gauntlet's own key for running the judges. Your agent's API key is passed separately when you run the eval.
+The `ANTHROPIC_API_KEY` in the MCP config is Gauntlet's own key for running the judges. Your agent's API key is only needed if you want to test a specific model directly via `gauntlet_eval_prompt`.
 
 **`find` returns no agents**
 Gauntlet looks for `system_prompt`, `SYSTEM_PROMPT`, `system=` arguments, or `{"role": "system"}` dicts. Make sure your agent file uses one of these patterns.
+
+**Goal shows as "Agent: filename" instead of a real description**
+Add a module-level docstring to your agent file. Gauntlet reads it automatically:
+```python
+"""Routes LLM prompts to the correct backend provider."""
+
+import anthropic
+...
+```

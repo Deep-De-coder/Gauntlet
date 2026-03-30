@@ -1,17 +1,3 @@
-# gauntlet/api/app.py
-#
-# WHY: The previous startup error came from two places:
-#   1. config.py raising at import time (fixed in config.py)
-#   2. Missing exception handlers — any unhandled exception in a route
-#      would return a raw 500 with no JSON body, confusing FastAPI's
-#      schema generator on the first request.
-#
-# We now use FastAPI's `lifespan` context manager (the modern replacement
-# for deprecated @app.on_event) to validate the API key ONCE at startup
-# and print a clear error instead of a silent crash.
-#
-# The /health endpoint gives Docker and CI a cheap liveness check.
-
 """Gauntlet REST API."""
 from contextlib import asynccontextmanager
 
@@ -38,8 +24,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Gauntlet",
-    description="Adversarial eval harness for multi-agent Claude API pipelines.",
-    version="0.1.0",
+    description="Adversarial eval harness for any LLM agent pipeline.",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -49,6 +35,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.get("/openapi.json", include_in_schema=False)
 async def custom_openapi():
@@ -61,12 +48,21 @@ async def custom_openapi():
         )
     )
 
+
 @app.get("/health", tags=["meta"])
 async def health():
+    """Liveness check — returns 200 if the server is running."""
     return {"status": "ok"}
+
 
 @app.post("/eval/run", response_model=EvalReport, tags=["eval"])
 async def eval_run(request: EvalRequest):
+    """
+    Run a full Gauntlet eval against your agent.
+
+    Supports single-agent and multi-agent workflows.
+    For multi-agent, decorate each sub-agent with @trace in your code.
+    """
     try:
         get_api_key()
     except EnvironmentError as exc:
@@ -77,16 +73,20 @@ async def eval_run(request: EvalRequest):
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+
 @app.get("/eval/list", tags=["eval"])
 async def eval_list():
+    """Return a summary list of all stored eval reports."""
     try:
         return await list_reports()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+
 @app.get("/eval/{report_id}", response_model=EvalReport, tags=["eval"])
 async def eval_get(report_id: str):
-    report = get_report(report_id)
+    """Fetch a single eval report by its ID."""
+    report = await get_report(report_id)
     if report is None:
         raise HTTPException(status_code=404, detail=f"Report {report_id!r} not found.")
     return report

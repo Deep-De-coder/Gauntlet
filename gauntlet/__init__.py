@@ -38,4 +38,4 @@ print(f"Bottleneck: {report.bottleneck_agent}")
 from gauntlet.tracing import trace, GauntletTracer
 
 __all__ = ["trace", "GauntletTracer"]
-__version__ = "0.1.2"
+__version__ = "0.1.3"

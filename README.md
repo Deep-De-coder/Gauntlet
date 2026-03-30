@@ -1,6 +1,6 @@
 # Gauntlet ⚔️
 
-> Adversarial eval harness for single and multi-agent Claude/OpenAI pipelines.
+> Adversarial eval harness for any LLM agent pipeline — Claude, OpenAI, or your own
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![CI](https://github.com/Deep-De-coder/Gauntlet/actions/workflows/ci.yml/badge.svg)](https://github.com/Deep-De-coder/Gauntlet/actions)
@@ -11,7 +11,7 @@
 
 Gauntlet solves a problem every AI engineer hits in production: **how do you know your agent pipeline actually works before it breaks in front of a real user?**
 
-Point it at any Claude or OpenAI agent — single or multi-agent — describe what it should do in plain English, and get back a pass rate, per-agent breakdown, adversarial findings, and concrete recommendations — automatically.
+Point it at Claude, OpenAI, or any LLM agent, describe what it should do in plain English, and get back a pass rate, per-agent breakdown, adversarial findings, and concrete recommendations automatically.
 
 ---
 
@@ -96,75 +96,25 @@ Your agent
 | **JudgeAgent** | Scores each response pass/fail — supports custom success criteria |
 | **ReportAgent** | Turns failures into prioritised, code-level recommendations |
 
-Average cost per full eval run: **~$0.001**
+Average cost per full eval run(Approximate): **~$0.002**
 
 ---
 
 ## Single-agent eval
 
-```python
-from gauntlet.core.runner import run_eval
-from gauntlet.core.models import EvalRequest, EvalMode
-import asyncio
+Point Gauntlet at any Claude or OpenAI model with a system prompt via the REST API, CLI, or Python SDK. It generates test scenarios, runs them through your agent, and returns a full report.
 
-request = EvalRequest(
-    goal="Classify a support ticket as billing, technical, or general",
-    agent_description="Single Claude classifier",
-    agent_api_key="sk-ant-...",
-    agent_system_prompt="You are a classifier. Reply with one word.",
-    mode=EvalMode.full,
-    runs=5,
-)
-report = asyncio.run(run_eval(request))
-print(f"Pass rate: {report.pass_rate:.0%}")
-```
+→ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for SDK usage.
 
 ---
 
 ## Multi-agent eval — automatic flow tracing
 
-Add one line per agent with `@trace`. Gauntlet automatically records every call, judges each step, and tells you exactly which agent is the bottleneck.
+Add `@trace("AgentName")` above each agent function. Gauntlet automatically records every call, judges each step individually, and pinpoints exactly which agent is the bottleneck.
 
-```python
-from gauntlet import trace
-from gauntlet.core.runner import run_eval
-from gauntlet.core.models import EvalRequest, EvalMode
-import asyncio
+→ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full `@trace` example.
 
-@trace("Router")
-async def router(input: str) -> str:
-    # your existing router logic — untouched
-    ...
-
-@trace("Writer")
-async def writer(input: str) -> str:
-    # your existing writer logic — untouched
-    ...
-
-@trace("Validator")
-async def validator(input: str) -> str:
-    # your existing validator logic — untouched
-    ...
-
-async def my_workflow(scenario: str) -> str:
-    route  = await router(scenario)
-    draft  = await writer(route)
-    result = await validator(draft)
-    return result
-
-request = EvalRequest(
-    goal="Classify and respond to support tickets",
-    agent_description="Router → Writer → Validator pipeline",
-    agent_api_key="sk-ant-...",
-    mode=EvalMode.full,
-    runs=5,
-)
-report = asyncio.run(run_eval(request, agent_fn=my_workflow))
-print(f"Bottleneck: {report.bottleneck_agent}")
-```
-
-The report shows the full execution flow and pinpoints failures:
-
+The report shows the complete execution flow:
 ```
 Traced flow: Router → Writer → Validator
 
